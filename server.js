@@ -14,6 +14,7 @@ const pool = new Pool({
   connectionString: process.env.NEON_DB_URL,
 });
 
+// Создать или получить пользователя по telegram_id
 app.post('/user', async (req, res) => {
   const { telegram_id } = req.body;
   if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
@@ -31,6 +32,7 @@ app.post('/user', async (req, res) => {
   }
 });
 
+// Получить все круги пользователя
 app.get('/circles/:user_id', async (req, res) => {
   const user_id = req.params.user_id;
   try {
@@ -44,6 +46,7 @@ app.get('/circles/:user_id', async (req, res) => {
   }
 });
 
+// Добавить новый круг
 app.post('/circle', async (req, res) => {
   const { user_id, currency, buy_rub, buy_price } = req.body;
   if (!user_id || !currency || !buy_rub || !buy_price) {
@@ -65,6 +68,7 @@ app.post('/circle', async (req, res) => {
   }
 });
 
+// Добавить продажу к кругу
 app.post('/circle/:circle_id/sell', async (req, res) => {
   const circle_id = req.params.circle_id;
   const { qty, price, rub, note } = req.body;
@@ -109,6 +113,7 @@ app.post('/circle/:circle_id/sell', async (req, res) => {
   }
 });
 
+// Удалить круг и связанные продажи
 app.delete('/circle/:circle_id', async (req, res) => {
   const circle_id = req.params.circle_id;
   try {
