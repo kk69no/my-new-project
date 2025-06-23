@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -10,11 +9,16 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(bodyParser.json());
 
+// Жёстко прописанная строка подключения к Neon DB:
+const connectionString = "postgresql://neondb_owner:npg_a4SlJczGr1gN@ep-holy-firefly-a8niiees-pooler.eastus2.azure.neon.tech/neondb?sslmode=require";
+
 const pool = new Pool({
-  connectionString: process.env.NEON_DB_URL,
+  connectionString,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-// Создать или получить пользователя по telegram_id
 app.post('/user', async (req, res) => {
   const { telegram_id } = req.body;
   if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
@@ -32,21 +36,27 @@ app.post('/user', async (req, res) => {
   }
 });
 
-// Получить все круги пользователя
 app.get('/circles/:user_id', async (req, res) => {
   const user_id = req.params.user_id;
   try {
     const client = await pool.connect();
     const result = await client.query('SELECT * FROM circles WHERE user_id = $1 ORDER BY created_at DESC', [user_id]);
+    
+    // Для каждого круга добавим sells
+    const circles = result.rows;
+    for (let circle of circles) {
+      const sellsRes = await client.query('SELECT * FROM sells WHERE circle_id = $1 ORDER BY id', [circle.id]);
+      circle.sells = sellsRes.rows;
+    }
+    
     client.release();
-    res.json(result.rows);
+    res.json(circles);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Добавить новый круг
 app.post('/circle', async (req, res) => {
   const { user_id, currency, buy_rub, buy_price } = req.body;
   if (!user_id || !currency || !buy_rub || !buy_price) {
@@ -56,8 +66,8 @@ app.post('/circle', async (req, res) => {
     const buy_qty = buy_rub / buy_price;
     const client = await pool.connect();
     const result = await client.query(
-      `INSERT INTO circles (user_id, currency, buy_rub, buy_price, buy_qty, remaining_qty, sell_qty, sell_rub, closed) 
-       VALUES ($1,$2,$3,$4,$5,$5,0,0,false) RETURNING *`,
+      `INSERT INTO circles (user_id, currency, buy_rub, buy_price, buy_qty, remaining_qty, sell_qty, sell_rub, closed, created_at) 
+       VALUES ($1,$2,$3,$4,$5,$5,0,0,false,NOW()) RETURNING *`,
       [user_id, currency, buy_rub, buy_price, buy_qty]
     );
     client.release();
@@ -68,7 +78,6 @@ app.post('/circle', async (req, res) => {
   }
 });
 
-// Добавить продажу к кругу
 app.post('/circle/:circle_id/sell', async (req, res) => {
   const circle_id = req.params.circle_id;
   const { qty, price, rub, note } = req.body;
@@ -113,7 +122,6 @@ app.post('/circle/:circle_id/sell', async (req, res) => {
   }
 });
 
-// Удалить круг и связанные продажи
 app.delete('/circle/:circle_id', async (req, res) => {
   const circle_id = req.params.circle_id;
   try {
